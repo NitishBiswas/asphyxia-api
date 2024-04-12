@@ -1,10 +1,10 @@
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify
 from flask_cors import CORS
 import pickle
 import librosa
 import numpy as np
-import requests
-from io import BytesIO
+import pyaudio
+import wave
 
 # Load the machine learning model
 model = pickle.load(open("RF_model.pkl", 'rb'))
@@ -19,27 +19,52 @@ def home():
     return 'Welcome to the Asphyxia Detection API'
 
 # Define route to handle audio file URL and return prediction
-@app.route('/predict', methods=['POST'])
-def predict():
-    # Check if the request contains a URL parameter
-    if 'url' not in request.form:
-        return jsonify({'error': 'No URL parameter found'}), 400
-    
-    # Extract the URL parameter from the request
-    audio_url = request.form['url']
-    print('audio_url:', audio_url)
+@app.route('/predict')
+def predict():    
+    # Constants for audio recording
+    FORMAT = pyaudio.paInt16
+    CHANNELS = 1
+    RATE = 44100
+    CHUNK = 1024
+    RECORD_SECONDS = 2
+    WAVE_OUTPUT_FILENAME = "output.wav"
+
+    # Initialize PyAudio
+    audio = pyaudio.PyAudio()
+
+    # Open stream for recording
+    stream = audio.open(format=FORMAT,
+                        channels=CHANNELS,
+                        rate=RATE,
+                        input=True,
+                        frames_per_buffer=CHUNK)
+
+    print("Recording...")
+
+    # Record audio data
+    frames = []
+    for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
+        data = stream.read(CHUNK)
+        frames.append(data)
+
+    print("Recording complete.")
+
+    # Stop recording and close the stream
+    stream.stop_stream()
+    stream.close()
+    audio.terminate()
+
+    # Save recorded audio to a WAV file
+    with wave.open(WAVE_OUTPUT_FILENAME, 'wb') as wf:
+        wf.setnchannels(CHANNELS)
+        wf.setsampwidth(audio.get_sample_size(FORMAT))
+        wf.setframerate(RATE)
+        wf.writeframes(b''.join(frames))
+
+    print("Audio saved to:", WAVE_OUTPUT_FILENAME)
     # Process the audio file from the URL
     try:
-        # Download the audio file from the URL
-        response = requests.get(audio_url)
-        
-        # Check if the download was successful
-        if response.status_code != 200:
-            return jsonify({'error': 'Failed to download audio file from URL'}), 500
-        
-        # Load the audio file from the downloaded content
-        audio_content = BytesIO(response.content)
-        audio, sample_rate = librosa.load(audio_content, sr=None)
+        audio, sample_rate = librosa.load(WAVE_OUTPUT_FILENAME, res_type='kaiser_fast')
         
         # Extract features from audio
         mfccs_features = librosa.feature.mfcc(y=audio, sr=sample_rate, n_mfcc=40)
