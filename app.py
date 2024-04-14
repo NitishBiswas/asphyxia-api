@@ -5,7 +5,7 @@ import librosa
 import numpy as np
 
 # Load the machine learning model
-model = pickle.load(open("RF_model.pkl", 'rb'))
+model = pickle.load(open("RF_model_v2.pkl", 'rb'))
 
 # Initialize Flask app
 app = Flask(__name__)
